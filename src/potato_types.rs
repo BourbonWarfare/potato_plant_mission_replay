@@ -15,19 +15,5 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-mod view_session;
-mod potato_types;
 
-use crate::potato_types::Error;
-
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    let addr: std::net::SocketAddr = "[::1]:3000".parse()?;
-    println!("Listening on http://{}", addr);
-    let svc = view_session::MakeViewSessionService::new();
-    let server = hyper::Server::bind(&addr).serve(svc);
-
-    server.await?;
-
-    Ok(())
-}
+pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
