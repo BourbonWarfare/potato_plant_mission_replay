@@ -48,18 +48,24 @@ impl ViewSession {
     }
 }
 
-struct ViewSessionService {
+pub struct ViewSessionService {
     view_session: Arc<RwLock<ViewSession>>    
 }
 
 impl ViewSessionService {
+    fn new(view_session: Arc<RwLock<ViewSession>>) -> ViewSessionService {
+        ViewSessionService {
+            view_session
+        }
+    }
+
     fn handle_request(&mut self, mut request: Request<Body>) -> Result<Response<Body>, Error> {
         if hyper_tungstenite::is_upgrade_request(&request) {
             let (response, websocket) = hyper_tungstenite::upgrade(&mut request, None)?;
 
             let mut s = ViewSessionService{ view_session: self.view_session.clone() };
             tokio::spawn(async move {
-                if let Err(e) = s.serve_websocket(websocket).await {
+                if let Err(e) = s.serve_websocket(websocket, request).await {
                     eprintln!("Error in websocket connection: {}", e);
                 }
             });
@@ -70,7 +76,8 @@ impl ViewSessionService {
         }
     }
 
-    async fn serve_websocket(&mut self, websocket: HyperWebsocket) -> Result<(), Error> {
+    async fn serve_websocket(&mut self, websocket: HyperWebsocket, request: Request<Body>) -> Result<(), Error> {
+        println!("Connection request on {:?}", request.uri().path());
         let mut websocket = websocket.await?;
         let mut now = Instant::now();
         loop {
@@ -133,7 +140,7 @@ impl MakeViewSessionService {
 }
 
 impl<T> Service<T> for MakeViewSessionService {
-    type Response = ViewSession;
+    type Response = ViewSessionService;
     type Error = hyper::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -143,6 +150,7 @@ impl<T> Service<T> for MakeViewSessionService {
 
     fn call(&mut self, _: T) -> Self::Future {
         println!("conn");
-        let fut = async move { Ok(ViewSession::new()) };
+        let session = self.session.clone();
+        let fut = async move { Ok(ViewSessionService::new(session)) };
         Box::pin(fut)
     }}
