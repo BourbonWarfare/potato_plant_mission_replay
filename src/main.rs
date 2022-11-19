@@ -17,17 +17,25 @@
 */
 mod view_session;
 mod potato_types;
+mod serve_static;
 
 use crate::potato_types::Error;
+use pretty_env_logger;
+use std::env;
+use log::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    env::set_var("RUST_APP_LOG", "trace");
+    pretty_env_logger::init_custom_env("RUST_APP_LOG");
+
     let addr: std::net::SocketAddr = "[::1]:3000".parse()?;
-    println!("Listening on http://{}", addr);
+    info!(target: "potato_plant_replay", "Listening on {:?}", addr);
     let svc = view_session::MakeViewSessionService::new();
     let server = hyper::Server::bind(&addr).serve(svc);
 
     server.await?;
 
+    env::remove_var("RUST_APP_LOG");
     Ok(())
 }

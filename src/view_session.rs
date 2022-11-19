@@ -23,13 +23,16 @@ use std::{
     task::{Context, Poll}
 };
 use hyper::service::Service;
-use hyper::{Body, Request, Response, StatusCode};
+use hyper::{Body, Request, Response, StatusCode, Method, header::{HeaderValue, HeaderName}};
 use hyper_tungstenite::{tungstenite, HyperWebsocket};
 use tungstenite::Message;
 use futures::{SinkExt, StreamExt};
 use uuid::Uuid;
 
+use log::{info, warn, error};
+
 use crate::potato_types::Error;
+use crate::serve_static::{serve_html, serve_404};
 
 /// A single mission being viewed. Has a UUID and a list of viewers of which we stream to
 /// Updates in it's own thread, websockets will read into mission data to figure out next event to
@@ -66,7 +69,7 @@ impl ViewSessionService {
             let mut s = ViewSessionService{ view_session: self.view_session.clone() };
             tokio::spawn(async move {
                 if let Err(e) = s.serve_websocket(websocket, request).await {
-                    eprintln!("Error in websocket connection: {}", e);
+                    error!(target: "view_session", "Error in websocket connection: {:?}", e);
                 }
             });
 
@@ -77,7 +80,7 @@ impl ViewSessionService {
     }
 
     async fn serve_websocket(&mut self, websocket: HyperWebsocket, request: Request<Body>) -> Result<(), Error> {
-        println!("Connection request on {:?}", request.uri().path());
+        info!(target: "view_session", "New websocket connection");
         let mut websocket = websocket.await?;
         let mut now = Instant::now();
         loop {
@@ -99,14 +102,23 @@ impl ViewSessionService {
      * Load static website data
      * Return all when relevant
      */
-
     fn serve_http(&mut self, mut request: Request<Body>) -> Result<Response<Body>, Error> {
-        let mut response = Response::new(Body::empty());
-        match (request.method(), request.uri().path()) {
-            _ => {
-                *response.status_mut() = StatusCode::NOT_FOUND;
+        info!(target: "view_session", "New request from path {:?}", request.uri().path());
+        let response = match (request.method(), request.uri().path()) {
+            (&Method::GET, "/") => {
+                serve_html("www/index.html")
             }
-        }
+            (&Method::GET, "/create_lobby") => {
+                Response::builder()
+                    .header("Content-Type", "application/json")
+                    .body(Body::from("{ \"test\": 500 }"))
+                .unwrap()
+            }
+            _ => {
+                info!(target: "view_session", "404: {:?}", request.method());
+                serve_404()
+            }
+        };
 
         Ok(response)
     }
@@ -149,7 +161,7 @@ impl<T> Service<T> for MakeViewSessionService {
     }
 
     fn call(&mut self, _: T) -> Self::Future {
-        println!("conn");
+        info!("New connection");
         let session = self.session.clone();
         let fut = async move { Ok(ViewSessionService::new(session)) };
         Box::pin(fut)
