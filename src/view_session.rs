@@ -23,7 +23,7 @@ use std::{
     task::{Context, Poll}
 };
 use hyper::service::Service;
-use hyper::{Body, Request, Response, StatusCode, Method, header::{HeaderValue, HeaderName}, body};
+use hyper::{Body, Request, Response, Method, body};
 use hyper_tungstenite::{tungstenite, HyperWebsocket};
 use tungstenite::Message;
 use futures::{SinkExt, StreamExt};
@@ -33,8 +33,17 @@ use log::{info, warn, error, debug};
 
 use crate::potato_types::Error;
 use crate::serve_static::{StaticServer, StaticFile, StaticFileStorage};
-
-/// A single mission being viewed. Has a UUID and a list of viewers of which we stream to
+use crate::requests;
+use crate::responses;
+/* TODO
+ * Generate unique websocket group
+ * Assign group to UUID
+ * When POSTing a request to create a session, return relevant UUID
+ * Connect websocket using UUID as URI path/some other payload method
+ * Load stream data
+ * Return all when relevant
+ */
+// A single mission being viewed. Has a UUID and a list of viewers of which we stream to
 /// Updates in it's own thread, websockets will read into mission data to figure out next event to
 /// send
 struct ViewSession {
@@ -49,6 +58,7 @@ impl ViewSession {
             unique_id: Uuid::new_v4(),
         }
     }
+
 }
 
 pub struct ViewSessionService {
@@ -95,30 +105,66 @@ impl ViewSessionService {
         Ok(())
     }
 
-    /* TODO
-     * Generate unique websocket group
-     * Assign group to UUID
-     * When POSTing a request to create a session, return relevant UUID
-     * Connect websocket using UUID as URI path/some other payload method
-     * Load stream data
-     * Return all when relevant
-     */
-    async fn serve_http(&mut self, mut request: Request<Body>) -> Result<Response<Body>, Error> {
+    async fn serve_http(&mut self, request: Request<Body>) -> Result<Response<Body>, Error> {
         debug!(target: "view_session", "New request from path {:?}", request.uri().path());
-        let response = match (request.method(), request.uri().path()) {
-            (&Method::GET, path) => self.static_server.serve(path),
-            (&Method::POST, "/create_lobby") => {
-                let bytes = body::to_bytes(request.into_body()).await?;
-                debug!("{:?}", std::str::from_utf8(&bytes));
-                Response::builder()
-                    .header("Content-Type", "application/json")
-                    .body(Body::from("{ \"test\": 500 }"))
-                .unwrap()
+        let response = match request.method() {
+            &Method::GET => self.static_server.serve(request.uri().path()),
+            &Method::POST => {
+                let uri = request.uri().clone();
+                let bytes = body::to_bytes(request.into_body()).await?.to_vec();
+                self.handle_http_post(&uri, bytes)
             },
             _ => self.static_server.serve_404()
         };
 
         Ok(response)
+    }
+
+    fn build_json_response_from_response<T>(response: responses::Response<T>) -> Response<Body>
+        where T: serde::Serialize
+    {
+        let (status_code, body_option) = match response {
+            responses::Response::Info(status_code) => (status_code, None),
+            responses::Response::Success((status_code, response_json)) => (
+                status_code,
+                Some(Body::from(serde_json::to_string(&response_json).unwrap()))
+            ),
+            responses::Response::Redirection(status_code) => (status_code, None),
+            responses::Response::ClientError(status_code) => (status_code, None),
+            responses::Response::ServerError(status_code) => (status_code, None)
+        };
+
+        let body = match body_option {
+            Some(b) => b,
+            None => Body::empty()
+        };
+
+        Response::builder()
+            .header("Content-Type", "application/json")
+            .status(status_code)
+            .body(Body::from(body))
+        .unwrap()
+    }
+
+    fn handle_http_post(&mut self, uri: &hyper::Uri, bytes: Vec<u8>) -> Response<Body> {
+        let json_parse = serde_json::from_slice(&bytes);
+        if let Err(e) = json_parse {
+            warn!("Cannot parse request params: {:?}", e);
+            return Response::builder().status(hyper::StatusCode::BAD_REQUEST).body(Body::from("")).unwrap();
+        }
+
+        let response = match uri.path() {
+            "/create_lobby" => {
+                let lobby_params: requests::CreateLobby = json_parse.unwrap();
+                let status = responses::Response::Success((hyper::StatusCode::CREATED, responses::LobbyCreated::new()));
+                Self::build_json_response_from_response(status)
+            }
+            _ => {
+                Response::builder().status(hyper::StatusCode::NOT_IMPLEMENTED).body(Body::empty()).unwrap()
+            }
+        };
+
+        response
     }
 }
 

@@ -16,12 +16,11 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use std::fs;
-use std::io::Read;
 use std::path::{PathBuf, Path};
 use std::collections::HashMap;
 use hyper::{
     StatusCode, Body,
-    http::{Response}
+    http::Response
 };
 
 use log::{warn, debug};
