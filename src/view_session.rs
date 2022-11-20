@@ -23,7 +23,7 @@ use std::{
     task::{Context, Poll}
 };
 use hyper::service::Service;
-use hyper::{Body, Request, Response, StatusCode, Method, header::{HeaderValue, HeaderName}};
+use hyper::{Body, Request, Response, StatusCode, Method, header::{HeaderValue, HeaderName}, body};
 use hyper_tungstenite::{tungstenite, HyperWebsocket};
 use tungstenite::Message;
 use futures::{SinkExt, StreamExt};
@@ -64,11 +64,11 @@ impl ViewSessionService {
         }
     }
 
-    fn handle_request(&mut self, mut request: Request<Body>) -> Result<Response<Body>, Error> {
+    async fn handle_request(&mut self, mut request: Request<Body>) -> Result<Response<Body>, Error> {
+        let mut s = ViewSessionService{ view_session: self.view_session.clone(), static_server: self.static_server.clone() };
         if hyper_tungstenite::is_upgrade_request(&request) {
             let (response, websocket) = hyper_tungstenite::upgrade(&mut request, None)?;
 
-            let mut s = ViewSessionService{ view_session: self.view_session.clone(), static_server: self.static_server.clone() };
             tokio::spawn(async move {
                 if let Err(e) = s.serve_websocket(websocket, request).await {
                     warn!(target: "view_session", "Error in websocket connection: {:?}", e);
@@ -77,7 +77,7 @@ impl ViewSessionService {
 
             Ok(response)
         } else {
-            self.serve_http(request)
+            s.serve_http(request).await
         }
     }
 
@@ -103,12 +103,13 @@ impl ViewSessionService {
      * Load stream data
      * Return all when relevant
      */
-    fn serve_http(&mut self, mut request: Request<Body>) -> Result<Response<Body>, Error> {
+    async fn serve_http(&mut self, mut request: Request<Body>) -> Result<Response<Body>, Error> {
         debug!(target: "view_session", "New request from path {:?}", request.uri().path());
         let response = match (request.method(), request.uri().path()) {
             (&Method::GET, path) => self.static_server.serve(path),
-            (&Method::PUT, "/create_lobby") => {
-                debug!(target: "view_session", "Request payload: {:?}", request.body());
+            (&Method::POST, "/create_lobby") => {
+                let bytes = body::to_bytes(request.into_body()).await?;
+                debug!("{:?}", std::str::from_utf8(&bytes));
                 Response::builder()
                     .header("Content-Type", "application/json")
                     .body(Body::from("{ \"test\": 500 }"))
@@ -131,8 +132,8 @@ impl Service<Request<Body>> for ViewSessionService {
     }
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
-        let res = self.handle_request(req);
-        Box::pin(async { res })
+        let mut other = ViewSessionService::new(self.view_session.clone(), self.static_server.clone());
+        Box::pin(async move { other.handle_request(req).await })
     }
 }
 
