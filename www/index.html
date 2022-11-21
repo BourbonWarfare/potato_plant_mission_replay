@@ -5,7 +5,10 @@
         <script src="test.js"></script>
     </head>
     <body>
-        <button type="button" onclick="testPost()">POST</button>
-        <button type="button" onclick="testWebSocket()">WS Connect</button>
+        <form action="javascript:void(0);">
+            <input type="text" id="lobby_id">
+            <input type="button" onclick="testPost()" value="POST">
+            <input type="button" onclick="testWebSocket()" value="WS">
+        </form>
     </body>
 </html>

@@ -21,16 +21,14 @@ use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
-    collections::HashMap
 };
 use hyper::service::Service;
 use hyper::{Body, Request, Response, Method, body};
 use hyper_tungstenite::{tungstenite, HyperWebsocket};
 use tungstenite::Message;
-use futures::{SinkExt, StreamExt};
-use uuid::Uuid;
+use futures::SinkExt;
 
-use log::{info, warn, error, debug};
+use log::{info, warn, debug};
 
 use crate::view_session::LobbyHandler;
 use crate::potato_types::Error;
