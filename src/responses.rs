@@ -19,23 +19,50 @@ use serde::Serialize;
 use hyper::StatusCode;
 
 pub enum Response<T> {
-    Info(StatusCode),
-    Success((StatusCode, T)),
-    Redirection(StatusCode),
-    ClientError(StatusCode),
-    ServerError(StatusCode)
+    Info((StatusCode, Option<T>)),
+    Success((StatusCode, Option<T>)),
+    Redirection((StatusCode, Option<T>)),
+    ClientError((StatusCode, Option<T>)),
+    ServerError((StatusCode, Option<T>))
+}
+
+pub trait CanRespond 
+    where Self: Sized
+{
+    fn build_response(self, status_code: StatusCode) -> Response<Self> {
+        if status_code.is_informational() {
+            return Response::Info((status_code, Some(self)))
+        } else if status_code.is_success() {
+            return Response::Success((status_code, Some(self)))
+        } else if status_code.is_redirection() {
+            return Response::Redirection((status_code, Some(self)))
+        } else if status_code.is_client_error() {
+            return Response::ClientError((status_code, Some(self)))
+        }
+        Response::ServerError((status_code, Some(self)))
+    }
 }
 
 #[derive(Serialize, Debug)]
 pub struct LobbyCreated {
-    lobby_id: String
+    pub valid: bool,
+    pub lobby_id: String
+}
+impl CanRespond for LobbyCreated {}
+
+#[derive(Serialize, Debug)]
+pub struct WebSocketFailedConnection {
+    pub valid: bool,
+    pub message: String
 }
 
-impl LobbyCreated {
-    pub fn new() -> LobbyCreated {
-        LobbyCreated {
-            lobby_id: "".to_string()
+impl WebSocketFailedConnection {
+    pub fn new(msg: &str) -> WebSocketFailedConnection {
+        WebSocketFailedConnection {
+            valid: false,
+            message: msg.to_string()
         }
     }
 }
+impl CanRespond for WebSocketFailedConnection {}
 

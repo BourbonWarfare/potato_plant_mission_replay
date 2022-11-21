@@ -19,7 +19,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateLobby {
-    lobby_name: String,
-    mission_id: String
+    pub lobby_id: String,
+    pub mission_id: String
 }
 

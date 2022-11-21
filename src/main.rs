@@ -16,10 +16,13 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 mod view_session;
+mod view_session_service;
+mod json_builder;
 mod potato_types;
 mod serve_static;
 mod requests;
 mod responses;
+mod utils;
 
 use crate::potato_types::Error;
 use pretty_env_logger;
@@ -33,7 +36,7 @@ async fn main() -> Result<(), Error> {
 
     let addr: std::net::SocketAddr = "[::1]:3000".parse()?;
     info!(target: "potato_plant_replay", "Listening on {:?}", addr);
-    let svc = view_session::MakeViewSessionService::new();
+    let svc = view_session_service::MakeViewSessionService::new();
     let server = hyper::Server::bind(&addr).serve(svc);
 
     server.await?;

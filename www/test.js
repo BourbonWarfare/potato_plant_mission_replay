@@ -1,6 +1,6 @@
 async function testPost() {
     const test_request = {
-        lobby_name: 'my-lobby',
+        lobby_id: 'my-lobby',
         mission_id: 'foobar'
     };
 
@@ -12,4 +12,10 @@ async function testPost() {
         body: JSON.stringify(test_request)
     });
     return response.json()
+}
+
+async function testWebSocket() {
+	const socket = new WebSocket("ws://localhost:3000?lobby-id=my-lobby");
+	socket.onopen = () => { console.log("foo"); };
+	socket.onmessage = (ev) => { console.log(ev.data); }
 }
